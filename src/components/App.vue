@@ -15,7 +15,20 @@
   </div>
 </template>
 
-<script>
+<script setup>
+import axios from 'axios';
+
+const fetchSensor = async () => {
+  try {
+    const response = await axios.get(BASE_URL)
+  } catch (error) {
+    console.error("Error fetching sensor data:", error);
+  }
+}
+
+onMounted
+</script>
+<!-- <script>
 import axios from 'axios';
 
 export default {
@@ -30,7 +43,7 @@ export default {
   methods: {
     async fetchSensorData() {
       try {
-        const response = await axios.get('http://192.168.1.99/sensor-data');
+        const response = await axios.get('/sensor-data');
         this.sensorData = response.data;
       } catch (error) {
         console.error("Error fetching sensor data:", error);
@@ -38,4 +51,4 @@ export default {
     }
   }
 }
-</script>
+</script> -->
