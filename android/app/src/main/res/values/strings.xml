@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SBS-Mobile-App</string>
+    <string name="title_activity_main">SBS-Mobile-App</string>
+    <string name="package_name">SBS.Mobile.App</string>
+    <string name="custom_url_scheme">SBS.Mobile.App</string>
+</resources>
