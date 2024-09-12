@@ -1,0 +1,7 @@
+{
+  "name": "SBS-Mobile-App",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "custom"
+}
