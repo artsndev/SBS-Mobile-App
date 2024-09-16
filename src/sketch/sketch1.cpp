@@ -1,15 +1,14 @@
 #include <Wire.h>
-#include <MAX30105.h>   // Correct header for SparkFun MAX3010x library
-#include <heartRate.h>  // Required for calculating heart rate
-#include <spo2_algorithm.h>  // Required for calculating SpO2
+#include "MAX30105.h"
+#include "heartRate.h" // Required for calculating heart rate
 #include <WiFi.h>  // For connecting the ESP32 to Wi-Fi
 #include <WebServer.h>  // Synchronous web server library
 #include <ArduinoJson.h>  // For formatting sensor data as JSON
 
 // Create an instance of the sensor
-MAX30105 pulseSensor;
+MAX30105 particleSensor;
 
-// Variables for heart rate and SpO2 calculations
+// Variables for heart rate calculations
 const byte RATE_SIZE = 4;
 byte rates[RATE_SIZE];
 byte rateSpot = 0;
@@ -20,11 +19,8 @@ int beatAvg;
 
 #define BUFFER_SIZE 100
 uint32_t irBuffer[BUFFER_SIZE];  // IR LED readings buffer
-uint32_t redBuffer[BUFFER_SIZE];  // Red LED readings buffer
 
 int32_t bufferLength;  // Number of samples
-int32_t spo2;
-int8_t validSPO2;
 int32_t heartRate;
 int8_t validHeartRate;
 
@@ -74,7 +70,6 @@ void handleSensorData() {
   json["waterDetected"] = waterDetected;
   json["bpm"] = beatsPerMinute;
   json["avgBpm"] = beatAvg;
-  json["spo2"] = spo2;
 
   String response;
   serializeJson(json, response);
@@ -84,15 +79,18 @@ void handleSensorData() {
 
 void setup() {
   // Initialize serial communication
-  Serial.begin(9600);
+  Serial.begin(115200);
   delay(1000);
 
   // Initialize the MAX30102 sensor
-  if (!pulseSensor.begin()) {
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
     Serial.println("MAX30102 sensor initialization failed.");
     while (1);  // Stop if initialization fails
   }
   Serial.println("MAX30102 sensor initialized.");
+  particleSensor.setup(); //Configure sensor with default settings
+  particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
+  particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
 
   // Initialize Wi-Fi
   WiFi.begin(ssid, password);
@@ -152,11 +150,10 @@ long measureDistance(int trigPin, int echoPin) {
 
 void handleSensorProcessing() {
   // Process sensor data, e.g., distance and heart rate
-  long irValue = pulseSensor.getIR();
-  long redValue = pulseSensor.getRed();
+  long irValue = particleSensor.getIR();
 
   // Check if a heartbeat is detected
-  if (checkForBeat(irValue)) {
+  if (checkForBeat(irValue == true)) {
     long delta = millis() - lastBeat;
     lastBeat = millis();
     beatsPerMinute = 60 / (delta / 1000.0);
@@ -172,13 +169,17 @@ void handleSensorProcessing() {
       beatAvg /= RATE_SIZE;
     }
   }
+  Serial.print("IR=");
+  Serial.print(irValue);
+  Serial.print(", BPM=");
+  Serial.print(beatsPerMinute);
+  Serial.print(", Avg BPM=");
+  Serial.println(beatAvg);
 
   if (bufferLength < BUFFER_SIZE) {
-    redBuffer[bufferLength] = redValue;
     irBuffer[bufferLength] = irValue;
     bufferLength++;
   } else {
-    maxim_heart_rate_and_oxygen_saturation(irBuffer, BUFFER_SIZE, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
     bufferLength = 0;
   }
 

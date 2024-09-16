@@ -21,9 +21,9 @@
         </v-col>
         <v-col cols="6">
           <v-card class="text-center py-5" rounded="xl" color="blue-grey-darken-4">
-            <v-icon size="70" color="red">mdi-gas-cylinder</v-icon>
-            <p class="fs-20 font-weight-bold">{{ sensorData.spo2 }}<span class="fs-14 text-grey ms-2">%</span></p>
-            <p class="fs-14">Oxygen Level</p>
+            <v-icon size="70" color="red">mdi-pulse</v-icon>
+            <p class="fs-20 font-weight-bold">{{ sensorData.bpm }}<span class="fs-14 text-grey ms-2">bpm</span></p>
+            <p class="fs-14">Pulse Per Minute</p>
           </v-card>
         </v-col>
         <v-col cols="6">
