@@ -1,9 +1,10 @@
 #include <Wire.h>
 #include "MAX30105.h"
-#include "heartRate.h" // Required for calculating heart rate
-#include <WiFi.h>  // For connecting the ESP32 to Wi-Fi
-#include <WebServer.h>  // Synchronous web server library
-#include <ArduinoJson.h>  // For formatting sensor data as JSON
+#include "heartRate.h"
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
+#include <ESP32Servo.h>
 
 // Create an instance of the sensor
 MAX30105 particleSensor;
@@ -18,9 +19,9 @@ float beatsPerMinute;
 int beatAvg;
 
 #define BUFFER_SIZE 100
-uint32_t irBuffer[BUFFER_SIZE];  // IR LED readings buffer
+uint32_t irBuffer[BUFFER_SIZE];
 
-int32_t bufferLength;  // Number of samples
+int32_t bufferLength;
 int32_t heartRate;
 int8_t validHeartRate;
 
@@ -43,18 +44,21 @@ const int waterSensorPin = 36;
 const int distanceThreshold = 50;
 const int minimumDistance = 1;
 
+// Servo setup
+Servo myservo; // Create a servo object
+const int servoPin = 19; // Set the pin for the MG996R servo
+
 // Wi-Fi credentials
-const char* ssid = "PLDTHOMEFIBRRcAMz";  // Replace with your Wi-Fi SSID
-const char* password = "F@yeed22beats";  // Replace with your Wi-Fi password
+const char* ssid = "PLDTHOMEFIBRRcAMz";
+const char* password = "F@yeed22beats";
 
 // Create a web server on port 80
 WebServer server(8000);
 
 // Handle requests and send sensor data in JSON format
 void handleSensorData() {
-  Serial.println("Received request for sensor data");  // Debug print
+  Serial.println("Received request for sensor data");
 
-  // Add CORS headers
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -78,61 +82,47 @@ void handleSensorData() {
 }
 
 void setup() {
-  // Initialize serial communication
   Serial.begin(115200);
   delay(1000);
 
-  // Initialize Wi-Fi
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);  // Faster Wi-Fi retry
+    delay(500);
     Serial.println("Connecting to Wi-Fi...");
   }
   Serial.println("Connected to Wi-Fi");
   Serial.println(WiFi.localIP());
 
-  // Set up the sensor data route
   server.on("/sensor-data", handleSensorData);
-
-  // Start the web server
   server.begin();
   Serial.println("Server started");
 
-  // Initialize the MAX30102 sensor
   if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
     Serial.println("MAX30102 sensor initialization failed.");
-    while (1);  // Stop if initialization fails
+    while (1);
   }
   Serial.println("MAX30102 sensor initialized.");
-  Serial.println("Place your index finger on the sensor with steady pressure.");
-  particleSensor.setup(); //Configure sensor with default settings
-  particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
-  particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
+  particleSensor.setup();
+  particleSensor.setPulseAmplitudeRed(0x0A);
+  particleSensor.setPulseAmplitudeGreen(0);
 
-
-  // Set ultrasonic sensor pins as outputs and inputs
   pinMode(trigPinFront, OUTPUT);
   pinMode(echoPinFront, INPUT);
   pinMode(trigPinSide, OUTPUT);
   pinMode(echoPinSide, INPUT);
-
-  // Set the water sensor pin as input
   pinMode(waterSensorPin, INPUT);
-
-  // Set the buzzer and vibration module pins as outputs
   pinMode(buzzerPin, OUTPUT);
   pinMode(vibrationPin, OUTPUT);
 
+  myservo.attach(servoPin); // Attach the servo
   Serial.println("Setup completed.");
 }
 
 void loop() {
-  // Non-blocking loop for sensor and server operations
-  handleSensorProcessing();  // Separate sensor logic to avoid delays
-  server.handleClient();  // Handle web server client requests
+  handleSensorProcessing();
+  server.handleClient();
 }
 
-// Function to measure distance using ultrasonic sensor
 long measureDistance(int trigPin, int echoPin) {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
@@ -151,78 +141,55 @@ long measureDistance(int trigPin, int echoPin) {
 }
 
 void handleSensorProcessing() {
-  // Process sensor data, e.g., distance and heart rate
   long irValue = particleSensor.getIR();
 
-  if (checkForBeat(irValue) == true)
-  {
-    Serial.println("Beat detected!"); // Add this line to verify if the function is working correctly
-
+  if (checkForBeat(irValue) == true) {
     long delta = millis() - lastBeat;
     lastBeat = millis();
 
-    Serial.print("Delta: "); // Add this line to verify the delta calculation
-    Serial.println(delta);
-
     beatsPerMinute = 60 / (delta / 1000.0);
 
-    Serial.print("Beats per minute: "); // Add this line to verify the beatsPerMinute calculation
-    Serial.println(beatsPerMinute);
+    if (beatsPerMinute < 255 && beatsPerMinute > 20) {
+      rates[rateSpot++] = (byte)beatsPerMinute;
+      rateSpot %= RATE_SIZE;
 
-    if (beatsPerMinute < 255 && beatsPerMinute > 20)
-    {
-      rates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
-      rateSpot %= RATE_SIZE; //Wrap variable
-
-      Serial.print("Rates array: "); // Add this line to verify the rates array
-      for (byte x = 0 ; x < RATE_SIZE ; x++)
-        Serial.print(rates[x]);
-      Serial.println();
-
-      //Take average of readings
       beatAvg = 0;
-      for (byte x = 0 ; x < RATE_SIZE ; x++)
+      for (byte x = 0; x < RATE_SIZE; x++)
         beatAvg += rates[x];
       beatAvg /= RATE_SIZE;
     }
   }
 
-  Serial.print("IR=");
-  Serial.print(irValue);
-  Serial.print(", BPM=");
-  Serial.print(beatsPerMinute);
-  Serial.print(", Avg BPM=");
-  Serial.print(beatAvg);
-
-  if (irValue < 50000)
-    Serial.print(" No finger?");
-
-  Serial.println();
-
-  if (bufferLength < BUFFER_SIZE) {
-    irBuffer[bufferLength] = irValue;
-    bufferLength++;
-  } else {
-    bufferLength = 0;
-  }
-
-  // Measure distances and detect water
   long distanceFront = measureDistance(trigPinFront, echoPinFront);
   long distanceSide = measureDistance(trigPinSide, echoPinSide);
   int waterDetected = digitalRead(waterSensorPin);
 
-  // Activate buzzer and vibration module based on sensor data
-  if (
-    (distanceFront > minimumDistance && distanceFront <= distanceThreshold) ||
-    (distanceSide > minimumDistance && distanceSide <= distanceThreshold) ||
-    waterDetected == HIGH
-  ) {
+  if ((distanceFront > minimumDistance && distanceFront <= distanceThreshold) ||
+      (distanceSide > minimumDistance && distanceSide <= distanceThreshold) ||
+      waterDetected == HIGH) {
     digitalWrite(buzzerPin, HIGH);
     digitalWrite(vibrationPin, HIGH);
+
+    // Servo rotates to detect direction
+    if (distanceFront <= distanceThreshold) {
+      myservo.write(0);  // Rotate to left
+      delay(500);
+      long leftDistance = measureDistance(trigPinFront, echoPinFront);
+
+      myservo.write(180);  // Rotate to right
+      delay(500);
+      long rightDistance = measureDistance(trigPinFront, echoPinFront);
+
+      if (leftDistance < rightDistance) {
+        Serial.println("Object detected on the left side.");
+      } else {
+        Serial.println("Object detected on the right side.");
+      }
+    }
   } else {
     digitalWrite(buzzerPin, LOW);
     digitalWrite(vibrationPin, LOW);
   }
 
-  delay(100);  // Add small delay to avoid overloading the loop
+  delay(100);
 }
